@@ -1,5 +1,5 @@
 class AppRoutes {
-  
+
   static const splash = '/';
   static const login = '/login';
   static const home = '/home';
@@ -8,5 +8,6 @@ class AppRoutes {
   static const support = '/support';
   static const plan = '/plan';
   static const campaigns = '/campaigns';
+  static const testSupabase = '/test-supabase';
 
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:protect/main.dart';
 import 'package:protect/core/routes/app_routes.dart';
+import 'package:protect/main.dart';
+import 'package:protect/services/session_service.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -17,7 +18,7 @@ class HomePage extends StatelessWidget {
         child: Column(
           children: [
 
-            // ===== TOPO COM LOGO =====
+            // TOPO
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
@@ -31,36 +32,33 @@ class HomePage extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  LayoutBuilder(
-                    builder: (context, c) {
-                      final double h = c.maxWidth < 420 ? 78.0 : 96.0;
 
-                      return Image.asset(
-                        'assets/images/logo.png',
-                        height: h,
-                        fit: BoxFit.contain,
-                      );
-                    },
+                  Image.asset(
+                    'assets/images/logo.png',
+                    height: 90,
+                    fit: BoxFit.contain,
                   ),
 
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
 
-                  const Text(
-                    'Clube de benefícios • 4 camadas de proteção',
+                  Text(
+                    SessionService.currentNome != null
+                        ? 'Olá, ${SessionService.currentNome!}'
+                        : 'Clube de benefícios • 4 camadas de proteção',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Colors.black87,
-                      fontSize: 14,
-                      height: 1.2,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
+
                 ],
               ),
             ),
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
 
-            // ===== MENU =====
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -123,6 +121,7 @@ class HomePage extends StatelessWidget {
                       Navigator.pushNamed(context, AppRoutes.support);
                     },
                   ),
+
                 ],
               ),
             ),
@@ -130,16 +129,11 @@ class HomePage extends StatelessWidget {
         ),
       ),
 
-      // ===== BOTÃO DE AJUDA =====
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: protectYellow,
         foregroundColor: Colors.black,
         onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Suporte Protect em breve'),
-            ),
-          );
+          Navigator.pushNamed(context, AppRoutes.support);
         },
         icon: const Icon(Icons.chat_bubble_outline),
         label: const Text('Ajuda'),
@@ -147,7 +141,6 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  // ===== CARD DO MENU =====
   static Widget _menuCard({
     required BuildContext context,
     required IconData icon,
@@ -178,7 +171,9 @@ class HomePage extends StatelessWidget {
           ),
           subtitle: Text(
             subtitle,
-            style: const TextStyle(color: Colors.black54),
+            style: const TextStyle(
+              color: Colors.black54,
+            ),
           ),
           trailing: const Icon(
             Icons.arrow_forward_ios,

@@ -1,16 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/routes/app_routes.dart';
+
 import 'features/auth/login_page.dart';
-import 'features/benefits/benefits_page.dart';
-import 'features/campaigns/campaigns_page.dart';
 import 'features/home/home_page.dart';
 import 'features/payments/payments_page.dart';
-import 'features/plan/plan_page.dart';
+import 'features/benefits/benefits_page.dart';
 import 'features/support/support_page.dart';
+import 'features/plan/plan_page.dart';
+import 'features/campaigns/campaigns_page.dart';
 import 'features/splash/splash_page.dart';
+import 'features/test/test_supabase_page.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: 'https://twdmdfcwvopjrmwvxvey.supabase.co',
+    anonKey: 'sb_publishable_wxTdPk_Qx9I8_H5IC1lBig_p7zyq8hQ',
+  );
+
   runApp(const ProtectApp());
 }
 
@@ -48,6 +58,7 @@ class ProtectApp extends StatelessWidget {
       ),
       initialRoute: AppRoutes.splash,
       routes: {
+        AppRoutes.splash: (context) => const SplashPage(),
         AppRoutes.login: (context) => const LoginPage(),
         AppRoutes.home: (context) => const HomePage(),
         AppRoutes.payments: (context) => const PaymentsPage(),
@@ -55,7 +66,7 @@ class ProtectApp extends StatelessWidget {
         AppRoutes.support: (context) => const SupportPage(),
         AppRoutes.plan: (context) => const PlanPage(),
         AppRoutes.campaigns: (context) => const CampaignsPage(),
-        AppRoutes.splash: (context) => const SplashPage(),
+        AppRoutes.testSupabase: (context) => const TestSupabasePage(),
       },
     );
   }
