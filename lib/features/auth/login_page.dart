@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:protect/core/routes/app_routes.dart';
 import 'package:protect/main.dart';
-import 'package:protect/services/session_service.dart';
 import 'package:protect/services/supabase_service.dart';
 
 class LoginPage extends StatefulWidget {
@@ -12,62 +11,103 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final TextEditingController _cpfController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
   bool _loading = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
-    _cpfController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
-  Future<void> _loginWithCpf() async {
-    final cpf = _cpfController.text.trim();
+  bool _isValidEmail(String email) {
+    return RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email);
+  }
 
-    if (cpf.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Digite seu CPF para continuar.'),
-        ),
-      );
+  String? _validateEmail(String? value) {
+    final email = value?.trim() ?? '';
+
+    if (email.isEmpty) {
+      return 'Informe seu email.';
+    }
+
+    if (!_isValidEmail(email)) {
+      return 'Informe um email válido.';
+    }
+
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    final password = value?.trim() ?? '';
+
+    if (password.isEmpty) {
+      return 'Informe sua senha.';
+    }
+
+    if (password.length < 6) {
+      return 'A senha deve ter pelo menos 6 caracteres.';
+    }
+
+    return null;
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _login() async {
+    FocusScope.of(context).unfocus();
+
+    if (!_formKey.currentState!.validate()) {
       return;
     }
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
 
     setState(() {
       _loading = true;
     });
 
     try {
-      final data = await SupabaseService.client
-          .from('profiles')
-          .select()
-          .eq('cpf', cpf)
-          .maybeSingle();
-
-      if (data == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cliente não encontrado para este CPF.'),
-          ),
-        );
-        return;
-      }
-
-      SessionService.setUser(
-        profileId: data['id'].toString(),
-        nome: data['nome'].toString(),
-        cpf: data['cpf'].toString(),
+      await SupabaseService.login(
+        email: email,
+        password: password,
       );
 
       if (!mounted) return;
+
       Navigator.pushReplacementNamed(context, AppRoutes.home);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erro ao fazer login: $e'),
-        ),
-      );
+      final errorText = e.toString().toLowerCase();
+      String message = 'Erro ao fazer login.';
+
+      if (errorText.contains('invalid login credentials') ||
+          errorText.contains('invalid_credentials')) {
+        message = 'Email ou senha inválidos.';
+      } else if (errorText.contains('email not confirmed')) {
+        message = 'Confirme seu email antes de entrar.';
+      } else if (errorText.contains('perfil não encontrado')) {
+        message = 'Seu cadastro foi criado, mas o perfil não foi encontrado.';
+      } else if (errorText.contains('too many requests') ||
+          errorText.contains('rate limit')) {
+        message = 'Muitas tentativas. Aguarde um pouco e tente novamente.';
+      } else {
+        message = 'Erro no login: $e';
+      }
+
+      _showMessage(message);
     } finally {
       if (mounted) {
         setState(() {
@@ -75,6 +115,21 @@ class _LoginPageState extends State<LoginPage> {
         });
       }
     }
+  }
+
+  InputDecoration _inputDecoration({
+    required String label,
+    IconData? icon,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: icon != null ? Icon(icon) : null,
+      suffixIcon: suffixIcon,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+    );
   }
 
   @override
@@ -85,76 +140,116 @@ class _LoginPageState extends State<LoginPage> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 420),
+            constraints: const BoxConstraints(maxWidth: 430),
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(18),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Image.asset(
-                  'assets/images/logo.png',
-                  height: 90,
-                  fit: BoxFit.contain,
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Acesse sua conta',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(
+                    'assets/images/logo.png',
+                    height: 90,
+                    fit: BoxFit.contain,
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Digite seu CPF para visualizar plano, pagamentos e benefícios.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.black54,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _cpfController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: 'CPF',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Acesse sua conta',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: ProtectApp.protectYellow,
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Entre com seu email e senha para acessar o Protect.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.black54,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    decoration: _inputDecoration(
+                      label: 'Email',
+                      icon: Icons.email_outlined,
+                    ),
+                    validator: _validateEmail,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    textInputAction: TextInputAction.done,
+                    decoration: _inputDecoration(
+                      label: 'Senha',
+                      icon: Icons.lock_outline,
+                      suffixIcon: IconButton(
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                        ),
                       ),
                     ),
-                    onPressed: _loading ? null : _loginWithCpf,
-                    child: _loading
-                        ? const SizedBox(
-                            height: 22,
-                            width: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text(
-                            'Entrar',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
+                    validator: _validatePassword,
+                    onFieldSubmitted: (_) {
+                      if (!_loading) {
+                        _login();
+                      }
+                    },
                   ),
-                ),
-              ],
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: ProtectApp.protectYellow,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: _loading ? null : _login,
+                      child: _loading
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text(
+                              'Entrar',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextButton(
+                    onPressed: _loading
+                        ? null
+                        : () {
+                            Navigator.pushNamed(context, AppRoutes.register);
+                          },
+                    child: const Text('Não tem conta? Criar conta'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

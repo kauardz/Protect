@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/routes/app_routes.dart';
 
 import 'features/auth/login_page.dart';
+import 'features/auth/register_page.dart';
 import 'features/home/home_page.dart';
 import 'features/payments/payments_page.dart';
 import 'features/benefits/benefits_page.dart';
@@ -12,6 +13,7 @@ import 'features/plan/plan_page.dart';
 import 'features/campaigns/campaigns_page.dart';
 import 'features/splash/splash_page.dart';
 import 'features/test/test_supabase_page.dart';
+import 'features/support/my_tickets_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +62,7 @@ class ProtectApp extends StatelessWidget {
       routes: {
         AppRoutes.splash: (context) => const SplashPage(),
         AppRoutes.login: (context) => const LoginPage(),
+        AppRoutes.register: (context) => const RegisterPage(),
         AppRoutes.home: (context) => const HomePage(),
         AppRoutes.payments: (context) => const PaymentsPage(),
         AppRoutes.benefits: (context) => const BenefitsPage(),
@@ -67,6 +70,7 @@ class ProtectApp extends StatelessWidget {
         AppRoutes.plan: (context) => const PlanPage(),
         AppRoutes.campaigns: (context) => const CampaignsPage(),
         AppRoutes.testSupabase: (context) => const TestSupabasePage(),
+        AppRoutes.myTickets: (context) => const MyTicketsPage(),
       },
     );
   }

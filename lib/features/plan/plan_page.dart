@@ -32,19 +32,18 @@ class _PlanPageState extends State<PlanPage> {
     }
 
     try {
-      final data = await SupabaseService.client
-          .from('plans')
-          .select()
-          .eq('profile_id', profileId)
-          .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
+      final data = await SupabaseService.getLatestPlan(profileId);
+
+      if (!mounted) return;
 
       setState(() {
         _plan = data;
+        _error = null;
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
         _error = 'Erro ao carregar plano: $e';
         _loading = false;
@@ -52,24 +51,18 @@ class _PlanPageState extends State<PlanPage> {
     }
   }
 
-  String _formatMoney(dynamic value) {
-    if (value == null) return 'Não informado';
+  Future<void> _refresh() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
-    return 'R\$ ${value.toString()}';
-  }
-
-  String _formatText(dynamic value, {String fallback = 'Não informado'}) {
-    if (value == null || value.toString().trim().isEmpty) {
-      return fallback;
-    }
-    return value.toString();
+    await _loadPlan();
   }
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_error != null) {
@@ -79,10 +72,7 @@ class _PlanPageState extends State<PlanPage> {
           child: Text(
             _error!,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.red,
-              fontSize: 16,
-            ),
+            style: const TextStyle(color: Colors.red, fontSize: 16),
           ),
         ),
       );
@@ -95,23 +85,16 @@ class _PlanPageState extends State<PlanPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.info_outline,
-                size: 48,
-                color: Colors.black54,
-              ),
+              const Icon(Icons.info_outline, size: 48, color: Colors.black54),
               const SizedBox(height: 12),
               const Text(
                 'Nenhum plano encontrado para este cliente.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.black87,
-                ),
+                style: TextStyle(fontSize: 16, color: Colors.black87),
               ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: _loadPlan,
+                onPressed: _refresh,
                 icon: const Icon(Icons.refresh),
                 label: const Text('Tentar novamente'),
               ),
@@ -121,137 +104,130 @@ class _PlanPageState extends State<PlanPage> {
       );
     }
 
-    final nomePlano = _formatText(_plan!['nome_plano']);
-    final status = _formatText(_plan!['status']);
-    final valor = _formatMoney(_plan!['valor']);
-    final vencimento = _formatText(_plan!['vencimento']);
+    final nomePlano =
+        SupabaseService.safeText(_plan!['nome_plano'], fallback: 'Sem plano');
+    final status =
+        SupabaseService.safeText(_plan!['status'], fallback: 'Inativo');
+    final valor = SupabaseService.formatMoney(_plan!['valor']);
+    final vencimento = SupabaseService.formatDate(_plan!['vencimento']);
+    final ativo = status.toLowerCase() == 'ativo';
 
-    final bool ativo = status.toLowerCase() == 'ativo';
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.verified_user_outlined, size: 30),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            nomePlano,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: ativo
+                                ? Colors.green.withOpacity(0.12)
+                                : Colors.orange.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            status,
+                            style: TextStyle(
+                              color: ativo ? Colors.green : Colors.orange,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    const _InfoRow(
+                      label: 'Cliente',
+                      valueFromSession: true,
+                    ),
+                    const SizedBox(height: 12),
+                    _InfoRow(label: 'Plano', value: nomePlano),
+                    const SizedBox(height: 12),
+                    _InfoRow(label: 'Valor mensal', value: valor),
+                    const SizedBox(height: 12),
+                    _InfoRow(label: 'Status', value: status),
+                    const SizedBox(height: 12),
+                    _InfoRow(label: 'Vencimento', value: vencimento),
+                    const SizedBox(height: 12),
+                    const _InfoRow(
+                      label: 'Forma de pagamento',
+                      value: 'Boleto, Pix e Cartão',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.verified_user_outlined, size: 30),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          nomePlano,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: ativo
-                              ? Colors.green.withOpacity(0.12)
-                              : Colors.orange.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          status,
-                          style: TextStyle(
-                            color: ativo ? Colors.green : Colors.orange,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
+                children: const [
+                  ListTile(
+                    leading: Icon(Icons.shield_outlined),
+                    title: Text('Películas grátis'),
+                    subtitle: Text('Consulte na área de benefícios'),
                   ),
-                  const SizedBox(height: 18),
-                  const _InfoRow(
-                    label: 'Cliente',
-                    valueFromSession: true,
+                  Divider(height: 1),
+                  ListTile(
+                    leading: Icon(Icons.autorenew),
+                    title: Text('Troca de película'),
+                    subtitle: Text('Disponível conforme regras do plano'),
                   ),
-                  const SizedBox(height: 12),
-                  _InfoRow(
-                    label: 'Plano',
-                    value: nomePlano,
-                  ),
-                  const SizedBox(height: 12),
-                  _InfoRow(
-                    label: 'Valor mensal',
-                    value: valor,
-                  ),
-                  const SizedBox(height: 12),
-                  _InfoRow(
-                    label: 'Status',
-                    value: status,
-                  ),
-                  const SizedBox(height: 12),
-                  _InfoRow(
-                    label: 'Vencimento',
-                    value: vencimento,
-                  ),
-                  const SizedBox(height: 12),
-                  const _InfoRow(
-                    label: 'Forma de pagamento',
-                    value: 'Boleto, Pix e Cartão',
+                  Divider(height: 1),
+                  ListTile(
+                    leading: Icon(Icons.support_agent_outlined),
+                    title: Text('Suporte'),
+                    subtitle: Text('Acompanhamento pelo aplicativo'),
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            child: Column(
-              children: const [
-                ListTile(
-                  leading: Icon(Icons.shield_outlined),
-                  title: Text('Películas grátis'),
-                  subtitle: Text('Consulte na área de benefícios'),
-                ),
-                Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.autorenew),
-                  title: Text('Troca de película'),
-                  subtitle: Text('Disponível conforme regras do plano'),
-                ),
-                Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.support_agent_outlined),
-                  title: Text('Suporte'),
-                  subtitle: Text('Acompanhamento pelo aplicativo'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Função de renovação será implementada em breve.'),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text(
-                'Renovar / Regularizar plano',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Função de renovação será implementada em breve.',
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text(
+                  'Renovar / Regularizar plano',
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -263,13 +239,7 @@ class _PlanPageState extends State<PlanPage> {
         title: const Text('Meu Plano'),
         actions: [
           IconButton(
-            onPressed: () {
-              setState(() {
-                _loading = true;
-                _error = null;
-              });
-              _loadPlan();
-            },
+            onPressed: _refresh,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -312,9 +282,7 @@ class _InfoRow extends StatelessWidget {
         Expanded(
           child: Text(
             displayValue,
-            style: const TextStyle(
-              fontWeight: FontWeight.w500,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w500),
           ),
         ),
       ],

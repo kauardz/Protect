@@ -32,19 +32,18 @@ class _BenefitsPageState extends State<BenefitsPage> {
     }
 
     try {
-      final data = await SupabaseService.client
-          .from('benefits')
-          .select()
-          .eq('profile_id', profileId)
-          .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
+      final data = await SupabaseService.getBenefits(profileId);
+
+      if (!mounted) return;
 
       setState(() {
         _benefit = data;
+        _error = null;
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
         _error = 'Erro ao carregar benefícios: $e';
         _loading = false;
@@ -52,16 +51,13 @@ class _BenefitsPageState extends State<BenefitsPage> {
     }
   }
 
-  String _safeText(dynamic value, {String fallback = 'Não informado'}) {
-    if (value == null) return fallback;
-    final text = value.toString().trim();
-    return text.isEmpty ? fallback : text;
-  }
+  Future<void> _refresh() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
-  int _safeInt(dynamic value) {
-    if (value == null) return 0;
-    if (value is int) return value;
-    return int.tryParse(value.toString()) ?? 0;
+    await _loadBenefits();
   }
 
   Widget _benefitCard({
@@ -73,6 +69,10 @@ class _BenefitsPageState extends State<BenefitsPage> {
   }) {
     return Card(
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 10,
+        ),
         leading: CircleAvatar(
           backgroundColor: color.withOpacity(0.15),
           child: Icon(icon, color: color),
@@ -81,11 +81,16 @@ class _BenefitsPageState extends State<BenefitsPage> {
           title,
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
-        subtitle: Text(subtitle),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(subtitle),
+        ),
         trailing: badge != null
             ? Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(20),
@@ -103,116 +108,138 @@ class _BenefitsPageState extends State<BenefitsPage> {
     );
   }
 
-  Widget _buildBody() {
-    if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
-
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            _error!,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.red,
-              fontSize: 16,
+  Widget _buildError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.red, fontSize: 16),
             ),
-          ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Tentar novamente'),
+            ),
+          ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    if (_benefit == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.info_outline,
-                size: 48,
-                color: Colors.black54,
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Nenhum benefício encontrado para este cliente.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _loadBenefits,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Tentar novamente'),
-              ),
-            ],
-          ),
+  Widget _buildEmpty() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.info_outline, size: 48, color: Colors.black54),
+            const SizedBox(height: 12),
+            const Text(
+              'Nenhum benefício encontrado para este cliente.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Tentar novamente'),
+            ),
+          ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    final peliculasRestantes = _safeInt(_benefit!['peliculas_restantes']);
-    final trocasRestantes = _safeInt(_benefit!['trocas_restantes']);
-    final observacao = _safeText(
+  Widget _buildContent() {
+    final peliculasRestantes =
+        SupabaseService.safeInt(_benefit!['peliculas_restantes']);
+    final trocasRestantes =
+        SupabaseService.safeInt(_benefit!['trocas_restantes']);
+    final observacao = SupabaseService.safeText(
       _benefit!['observacao'],
       fallback: 'Seus benefícios estão vinculados ao seu plano atual.',
     );
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          _benefitCard(
-            icon: Icons.shield_outlined,
-            title: 'Películas gratuitas',
-            subtitle:
-                'Você possui $peliculasRestantes película(s) disponível(is).',
-            color: Colors.blue,
-            badge: '$peliculasRestantes',
-          ),
-          const SizedBox(height: 12),
-          _benefitCard(
-            icon: Icons.autorenew,
-            title: 'Troca de película',
-            subtitle:
-                'Você possui $trocasRestantes troca(s) disponível(is).',
-            color: Colors.green,
-            badge: '$trocasRestantes',
-          ),
-          const SizedBox(height: 12),
-          _benefitCard(
-            icon: Icons.workspace_premium_outlined,
-            title: 'Status do benefício',
-            subtitle: observacao,
-            color: Colors.orange,
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('QR Code será implementado em breve.'),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.qr_code),
-              label: const Text(
-                'Gerar QR Code para uso na loja',
-                style: TextStyle(fontWeight: FontWeight.w700),
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _benefitCard(
+              icon: Icons.shield_outlined,
+              title: 'Películas gratuitas',
+              subtitle:
+                  'Você possui $peliculasRestantes película(s) disponível(is).',
+              color: Colors.blue,
+              badge: '$peliculasRestantes',
+            ),
+            const SizedBox(height: 12),
+            _benefitCard(
+              icon: Icons.autorenew,
+              title: 'Troca de película',
+              subtitle:
+                  'Você possui $trocasRestantes troca(s) disponível(is).',
+              color: Colors.green,
+              badge: '$trocasRestantes',
+            ),
+            const SizedBox(height: 12),
+            _benefitCard(
+              icon: Icons.workspace_premium_outlined,
+              title: 'Status do benefício',
+              subtitle: observacao,
+              color: Colors.orange,
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('QR Code será implementado em breve.'),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.qr_code),
+                label: const Text(
+                  'Gerar QR Code para uso na loja',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return _buildError();
+    }
+
+    if (_benefit == null) {
+      return _buildEmpty();
+    }
+
+    return _buildContent();
   }
 
   @override
@@ -222,13 +249,7 @@ class _BenefitsPageState extends State<BenefitsPage> {
         title: const Text('Benefícios'),
         actions: [
           IconButton(
-            onPressed: () {
-              setState(() {
-                _loading = true;
-                _error = null;
-              });
-              _loadBenefits();
-            },
+            onPressed: _refresh,
             icon: const Icon(Icons.refresh),
           ),
         ],

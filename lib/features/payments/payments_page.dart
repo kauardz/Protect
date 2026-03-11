@@ -34,17 +34,18 @@ class _PaymentsPageState extends State<PaymentsPage> {
     }
 
     try {
-      final data = await SupabaseService.client
-          .from('payments')
-          .select()
-          .eq('profile_id', profileId)
-          .order('vencimento', ascending: true);
+      final data = await SupabaseService.getPayments(profileId);
+
+      if (!mounted) return;
 
       setState(() {
         _payments = data;
+        _error = null;
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
         _error = 'Erro ao carregar pagamentos: $e';
         _loading = false;
@@ -52,9 +53,13 @@ class _PaymentsPageState extends State<PaymentsPage> {
     }
   }
 
-  String _formatMoney(dynamic value) {
-    if (value == null) return 'R\$ 0,00';
-    return 'R\$ ${value.toString()}';
+  Future<void> _refresh() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    await _loadPayments();
   }
 
   Color _statusColor(String? status) {
@@ -63,8 +68,23 @@ class _PaymentsPageState extends State<PaymentsPage> {
         return Colors.green;
       case 'vencido':
         return Colors.red;
-      default:
+      case 'pendente':
         return Colors.orange;
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
+  IconData _statusIcon(String? status) {
+    switch ((status ?? '').toLowerCase()) {
+      case 'pago':
+        return Icons.check_circle_outline;
+      case 'vencido':
+        return Icons.error_outline;
+      case 'pendente':
+        return Icons.schedule;
+      default:
+        return Icons.info_outline;
     }
   }
 
@@ -82,6 +102,10 @@ class _PaymentsPageState extends State<PaymentsPage> {
     final pixCode = payment['pix_code']?.toString();
     final boletoCode = payment['boleto_code']?.toString();
     final paymentLink = payment['payment_link']?.toString();
+    final status = SupabaseService.safeText(
+      payment['status'],
+      fallback: 'Pendente',
+    );
 
     showModalBottomSheet(
       context: context,
@@ -96,38 +120,37 @@ class _PaymentsPageState extends State<PaymentsPage> {
               children: [
                 const Text(
                   'Detalhes do pagamento',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.attach_money),
                   title: const Text('Valor'),
-                  subtitle: Text(_formatMoney(payment['valor'])),
+                  subtitle: Text(SupabaseService.formatMoney(payment['valor'])),
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.calendar_month),
                   title: const Text('Vencimento'),
-                  subtitle: Text(
-                    payment['vencimento']?.toString() ?? 'Não informado',
-                  ),
+                  subtitle: Text(SupabaseService.formatDate(payment['vencimento'])),
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.info_outline),
+                  leading: Icon(
+                    _statusIcon(status),
+                    color: _statusColor(status),
+                  ),
                   title: const Text('Status'),
-                  subtitle: Text(payment['status']?.toString() ?? 'Pendente'),
+                  subtitle: Text(status),
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.payments_outlined),
                   title: const Text('Método'),
-                  subtitle: Text(payment['metodo']?.toString() ?? 'Não informado'),
+                  subtitle: Text(
+                    SupabaseService.safeText(payment['metodo']),
+                  ),
                 ),
-
                 if (pixCode != null && pixCode.trim().isNotEmpty) ...[
                   const SizedBox(height: 8),
                   PixQrWidget(pixCode: pixCode),
@@ -136,10 +159,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                     child: ElevatedButton.icon(
                       onPressed: () {
                         Navigator.pop(context);
-                        _copyText(
-                          pixCode,
-                          'Código Pix copiado com sucesso.',
-                        );
+                        _copyText(pixCode, 'Código Pix copiado com sucesso.');
                       },
                       icon: const Icon(Icons.copy),
                       label: const Text('Copiar Pix'),
@@ -150,7 +170,6 @@ class _PaymentsPageState extends State<PaymentsPage> {
                     'Este pagamento não possui código Pix disponível.',
                     style: TextStyle(color: Colors.black54),
                   ),
-
                 if (boletoCode != null && boletoCode.trim().isNotEmpty)
                   SizedBox(
                     width: double.infinity,
@@ -166,12 +185,18 @@ class _PaymentsPageState extends State<PaymentsPage> {
                       label: const Text('Copiar boleto'),
                     ),
                   ),
-
-                if (paymentLink != null && paymentLink.trim().isNotEmpty)
+                if (paymentLink != null && paymentLink.trim().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Link de pagamento',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
                   SelectableText(
-                    'Link de pagamento: $paymentLink',
+                    paymentLink,
                     style: const TextStyle(fontSize: 14),
                   ),
+                ],
               ],
             ),
           ),
@@ -182,74 +207,101 @@ class _PaymentsPageState extends State<PaymentsPage> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_error != null) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(
-            _error!,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.red,
-              fontSize: 16,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _refresh,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Tentar novamente'),
+              ),
+            ],
           ),
         ),
       );
     }
 
     if (_payments.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'Nenhum pagamento encontrado.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16),
-          ),
+      return RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(24),
+          children: const [
+            SizedBox(height: 120),
+            Icon(Icons.payments_outlined, size: 48, color: Colors.black54),
+            SizedBox(height: 12),
+            Text(
+              'Nenhum pagamento encontrado.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16),
+            ),
+          ],
         ),
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _payments.length,
-      itemBuilder: (context, index) {
-        final payment = _payments[index] as Map<String, dynamic>;
-        final status = payment['status']?.toString() ?? 'Pendente';
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _payments.length,
+        itemBuilder: (context, index) {
+          final payment = _payments[index] as Map<String, dynamic>;
+          final status = SupabaseService.safeText(
+            payment['status'],
+            fallback: 'Pendente',
+          );
 
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            leading: const CircleAvatar(
-              child: Icon(Icons.payments),
-            ),
-            title: Text(
-              _formatMoney(payment['valor']),
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
               ),
-            ),
-            subtitle: Text(
-              'Vencimento: ${payment['vencimento']?.toString() ?? 'Não informado'}\n'
-              'Método: ${payment['metodo']?.toString() ?? 'Não informado'}',
-            ),
-            trailing: Text(
-              status,
-              style: TextStyle(
-                color: _statusColor(status),
-                fontWeight: FontWeight.w700,
+              leading: CircleAvatar(
+                backgroundColor: _statusColor(status).withOpacity(0.12),
+                child: Icon(
+                  _statusIcon(status),
+                  color: _statusColor(status),
+                ),
               ),
+              title: Text(
+                SupabaseService.formatMoney(payment['valor']),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                'Vencimento: ${SupabaseService.formatDate(payment['vencimento'])}\n'
+                'Método: ${SupabaseService.safeText(payment['metodo'])}',
+              ),
+              trailing: Text(
+                status,
+                style: TextStyle(
+                  color: _statusColor(status),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              onTap: () => _showPaymentDetails(payment),
             ),
-            onTap: () => _showPaymentDetails(payment),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -260,13 +312,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
         title: const Text('Pagamentos'),
         actions: [
           IconButton(
-            onPressed: () {
-              setState(() {
-                _loading = true;
-                _error = null;
-              });
-              _loadPayments();
-            },
+            onPressed: _refresh,
             icon: const Icon(Icons.refresh),
           ),
         ],
