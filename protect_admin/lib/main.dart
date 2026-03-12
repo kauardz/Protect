@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:protect_admin/features/auth/admin_login_page.dart';
+import 'features/auth/admin_login_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Supabase.initialize(
     url: 'https://twdmdfcwvopjrmwvxvey.supabase.co',
-    anonKey: 'SEU_ANON_KEY',
+    anonKey: 'sb_publishable_wxTdPk_Qx9I8_H5IC1lBig_p7zyq8hQ',
   );
 
   runApp(const ProtectAdmin());
@@ -18,10 +18,9 @@ class ProtectAdmin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Protect Admin',
+    return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: const AdminLoginPage(),
+      home: AdminLoginPage(),
     );
   }
 }
