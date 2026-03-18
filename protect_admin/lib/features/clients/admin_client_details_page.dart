@@ -17,8 +17,8 @@ class _AdminClientDetailsPageState extends State<AdminClientDetailsPage> {
   Map<String, dynamic>? _profile;
   Map<String, dynamic>? _plan;
   Map<String, dynamic>? _benefits;
-  List<dynamic> _payments = [];
-  List<dynamic> _tickets = [];
+  List<Map<String, dynamic>> _payments = [];
+  List<Map<String, dynamic>> _tickets = [];
 
   bool _loading = true;
   String? _error;
@@ -33,13 +33,13 @@ class _AdminClientDetailsPageState extends State<AdminClientDetailsPage> {
     try {
       final profile = await Supabase.instance.client
           .from('profiles')
-          .select()
+          .select('id, nome, cpf, telefone')
           .eq('id', widget.profileId)
           .maybeSingle();
 
       final plan = await Supabase.instance.client
           .from('plans')
-          .select()
+          .select('id, nome_plano, valor, status, vencimento')
           .eq('profile_id', widget.profileId)
           .order('created_at', ascending: false)
           .limit(1)
@@ -47,30 +47,39 @@ class _AdminClientDetailsPageState extends State<AdminClientDetailsPage> {
 
       final benefits = await Supabase.instance.client
           .from('benefits')
-          .select()
+          .select('id, peliculas_restantes, trocas_restantes, observacao')
           .eq('profile_id', widget.profileId)
           .order('created_at', ascending: false)
           .limit(1)
           .maybeSingle();
 
-      final payments = await Supabase.instance.client
+      final paymentsRaw = await Supabase.instance.client
           .from('payments')
-          .select()
+          .select('id, valor, metodo, status, vencimento')
           .eq('profile_id', widget.profileId)
           .order('vencimento', ascending: false);
 
-      final tickets = await Supabase.instance.client
+      final ticketsRaw = await Supabase.instance.client
           .from('support_tickets')
-          .select()
+          .select('id, tipo, mensagem, status, created_at')
           .eq('profile_id', widget.profileId)
           .order('created_at', ascending: false);
+
+      final payments = (paymentsRaw as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      final tickets = (ticketsRaw as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
 
       if (!mounted) return;
 
       setState(() {
-        _profile = profile;
-        _plan = plan;
-        _benefits = benefits;
+        _profile = profile == null ? null : Map<String, dynamic>.from(profile);
+        _plan = plan == null ? null : Map<String, dynamic>.from(plan);
+        _benefits =
+            benefits == null ? null : Map<String, dynamic>.from(benefits);
         _payments = payments;
         _tickets = tickets;
         _loading = false;
@@ -97,17 +106,26 @@ class _AdminClientDetailsPageState extends State<AdminClientDetailsPage> {
     return 'R\$ ${value.toString()}';
   }
 
-  Widget _sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
+  Widget _sectionCard({
+    required String title,
+    required Widget child,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 14),
+            child,
+          ],
         ),
       ),
     );
@@ -120,7 +138,7 @@ class _AdminClientDetailsPageState extends State<AdminClientDetailsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 110,
+            width: 120,
             child: Text(
               label,
               style: const TextStyle(
@@ -129,9 +147,7 @@ class _AdminClientDetailsPageState extends State<AdminClientDetailsPage> {
               ),
             ),
           ),
-          Expanded(
-            child: Text(value),
-          ),
+          Expanded(child: Text(value)),
         ],
       ),
     );
@@ -139,146 +155,136 @@ class _AdminClientDetailsPageState extends State<AdminClientDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Detalhes do Cliente')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Detalhes do Cliente')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(_error!, textAlign: TextAlign.center),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Detalhes do Cliente'),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(_error!, textAlign: TextAlign.center),
-                  ),
-                )
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isDesktop = constraints.maxWidth >= 1100;
+
+          final leftColumn = Column(
+            children: [
+              _sectionCard(
+                title: 'Cliente',
+                child: Column(
+                  children: [
+                    _infoRow('Nome', _safeText(_profile?['nome'])),
+                    _infoRow('CPF', _safeText(_profile?['cpf'])),
+                    _infoRow('Telefone', _safeText(_profile?['telefone'])),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              _sectionCard(
+                title: 'Plano',
+                child: Column(
+                  children: [
+                    _infoRow('Plano', _safeText(_plan?['nome_plano'])),
+                    _infoRow('Status', _safeText(_plan?['status'])),
+                    _infoRow('Valor', _formatMoney(_plan?['valor'])),
+                    _infoRow('Vencimento', _safeText(_plan?['vencimento'])),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              _sectionCard(
+                title: 'Benefícios',
+                child: Column(
+                  children: [
+                    _infoRow(
+                      'Películas',
+                      _safeText(_benefits?['peliculas_restantes']),
+                    ),
+                    _infoRow(
+                      'Trocas',
+                      _safeText(_benefits?['trocas_restantes']),
+                    ),
+                    _infoRow('Obs.', _safeText(_benefits?['observacao'])),
+                  ],
+                ),
+              ),
+            ],
+          );
+
+          final rightColumn = Column(
+            children: [
+              _sectionCard(
+                title: 'Pagamentos',
+                child: _payments.isEmpty
+                    ? const Text('Nenhum pagamento encontrado.')
+                    : Column(
+                        children: _payments.map((payment) {
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(_formatMoney(payment['valor'])),
+                            subtitle: Text(
+                              'Vencimento: ${_safeText(payment['vencimento'])}',
+                            ),
+                            trailing: Text(_safeText(payment['status'])),
+                          );
+                        }).toList(),
+                      ),
+              ),
+              const SizedBox(height: 16),
+              _sectionCard(
+                title: 'Chamados',
+                child: _tickets.isEmpty
+                    ? const Text('Nenhum chamado encontrado.')
+                    : Column(
+                        children: _tickets.map((ticket) {
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(_safeText(ticket['tipo'])),
+                            subtitle: Text(_safeText(ticket['mensagem'])),
+                            trailing: Text(_safeText(ticket['status'])),
+                          );
+                        }).toList(),
+                      ),
+              ),
+            ],
+          );
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: isDesktop
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: [
-                              _sectionTitle('Cliente'),
-                              _infoRow('Nome', _safeText(_profile?['nome'])),
-                              _infoRow('CPF', _safeText(_profile?['cpf'])),
-                              _infoRow(
-                                'Telefone',
-                                _safeText(_profile?['telefone']),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: [
-                              _sectionTitle('Plano'),
-                              _infoRow(
-                                'Plano',
-                                _safeText(_plan?['nome_plano']),
-                              ),
-                              _infoRow(
-                                'Status',
-                                _safeText(_plan?['status']),
-                              ),
-                              _infoRow(
-                                'Valor',
-                                _formatMoney(_plan?['valor']),
-                              ),
-                              _infoRow(
-                                'Vencimento',
-                                _safeText(_plan?['vencimento']),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: [
-                              _sectionTitle('Benefícios'),
-                              _infoRow(
-                                'Películas',
-                                _safeText(_benefits?['peliculas_restantes']),
-                              ),
-                              _infoRow(
-                                'Trocas',
-                                _safeText(_benefits?['trocas_restantes']),
-                              ),
-                              _infoRow(
-                                'Obs.',
-                                _safeText(_benefits?['observacao']),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: [
-                              _sectionTitle('Pagamentos'),
-                              if (_payments.isEmpty)
-                                const Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Text('Nenhum pagamento encontrado.'),
-                                )
-                              else
-                                ..._payments.map((payment) {
-                                  final p = payment as Map<String, dynamic>;
-                                  return ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    title: Text(_formatMoney(p['valor'])),
-                                    subtitle: Text(
-                                      'Vencimento: ${_safeText(p['vencimento'])}',
-                                    ),
-                                    trailing: Text(_safeText(p['status'])),
-                                  );
-                                }),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: [
-                              _sectionTitle('Chamados'),
-                              if (_tickets.isEmpty)
-                                const Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Text('Nenhum chamado encontrado.'),
-                                )
-                              else
-                                ..._tickets.map((ticket) {
-                                  final t = ticket as Map<String, dynamic>;
-                                  return ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    title: Text(_safeText(t['tipo'])),
-                                    subtitle: Text(_safeText(t['mensagem'])),
-                                    trailing: Text(_safeText(t['status'])),
-                                  );
-                                }),
-                            ],
-                          ),
-                        ),
-                      ),
+                      Expanded(child: leftColumn),
+                      const SizedBox(width: 16),
+                      Expanded(child: rightColumn),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      leftColumn,
+                      const SizedBox(height: 16),
+                      rightColumn,
                     ],
                   ),
-                ),
+          );
+        },
+      ),
     );
   }
 }

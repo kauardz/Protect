@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../dashboard/admin_dashboard_page.dart';
 
 class AdminLoginPage extends StatefulWidget {
@@ -25,7 +26,6 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
 
   void _showMessage(String message) {
     if (!mounted) return;
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );

@@ -1,169 +1,176 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../auth/admin_login_page.dart';
-import '../clients/admin_clients_page.dart';
 
-class AdminDashboardPage extends StatelessWidget {
+import '../../../widgets/admin_shell.dart';
+import '../../../widgets/premium_stat_card.dart';
+
+class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
 
-  Future<void> _logout(BuildContext context) async {
-    await Supabase.instance.client.auth.signOut();
+  @override
+  State<AdminDashboardPage> createState() => _AdminDashboardPageState();
+}
 
-    if (!context.mounted) return;
+class _AdminDashboardPageState extends State<AdminDashboardPage> {
+  bool _loading = true;
+  String? _error;
 
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const AdminLoginPage()),
-      (route) => false,
-    );
+  int _totalClients = 0;
+  int _openTickets = 0;
+  int _activeCampaigns = 0;
+  int _pendingPayments = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMetrics();
   }
 
-  Widget _menuCard({
-    required BuildContext context,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 10,
-        ),
-        leading: CircleAvatar(
-          radius: 24,
-          child: Icon(icon),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 16,
-          ),
-        ),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-        onTap: onTap,
-      ),
+  Future<void> _loadMetrics() async {
+    try {
+      final clients = await Supabase.instance.client
+          .from('profiles')
+          .select('id');
+
+      final tickets = await Supabase.instance.client
+          .from('support_tickets')
+          .select('id')
+          .eq('status', 'aberto');
+
+      final campaigns = await Supabase.instance.client
+          .from('campaigns')
+          .select('id')
+          .eq('ativa', true);
+
+      final payments = await Supabase.instance.client
+          .from('payments')
+          .select('id')
+          .eq('status', 'Pendente');
+
+      if (!mounted) return;
+
+      setState(() {
+        _totalClients = (clients as List).length;
+        _openTickets = (tickets as List).length;
+        _activeCampaigns = (campaigns as List).length;
+        _pendingPayments = (payments as List).length;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _error = 'Erro ao carregar dashboard: $e';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    await _loadMetrics();
+  }
+
+  Widget _grid() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        int crossAxisCount = 4;
+        if (constraints.maxWidth < 1300) crossAxisCount = 2;
+        if (constraints.maxWidth < 700) crossAxisCount = 1;
+
+        return GridView.count(
+          crossAxisCount: crossAxisCount,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 16,
+          childAspectRatio: 1.6,
+          children: [
+            PremiumStatCard(
+              title: 'Clientes',
+              value: _totalClients.toString(),
+              icon: Icons.people_outline,
+              footer: 'Total cadastrado no sistema',
+            ),
+            PremiumStatCard(
+              title: 'Chamados abertos',
+              value: _openTickets.toString(),
+              icon: Icons.support_agent_outlined,
+              footer: 'Demandas que precisam de atenção',
+            ),
+            PremiumStatCard(
+              title: 'Campanhas ativas',
+              value: _activeCampaigns.toString(),
+              icon: Icons.campaign_outlined,
+              footer: 'Campanhas visíveis aos clientes',
+            ),
+            PremiumStatCard(
+              title: 'Pagamentos pendentes',
+              value: _pendingPayments.toString(),
+              icon: Icons.payments_outlined,
+              footer: 'Cobranças ainda não quitadas',
+            ),
+          ],
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final user = Supabase.instance.client.auth.currentUser;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Protect Admin'),
-        actions: [
-          IconButton(
-            tooltip: 'Sair',
-            onPressed: () => _logout(context),
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Row(
-                  children: [
-                    const CircleAvatar(
-                      radius: 28,
-                      child: Icon(Icons.admin_panel_settings_outlined),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Bem-vindo ao painel',
-                            style: TextStyle(
-                              color: Colors.black54,
-                              fontSize: 13,
-                            ),
+    return AdminShell(
+      selectedIndex: 0,
+      title: 'Dashboard',
+      child: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(_error!, textAlign: TextAlign.center),
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: ListView(
+                    padding: const EdgeInsets.all(24),
+                    children: [
+                      _grid(),
+                      const SizedBox(height: 24),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(22),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text(
+                                'Visão geral',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              SizedBox(height: 12),
+                              Text(
+                                'Esse painel foi desenhado para acompanhar a operação da Protect com mais clareza. '
+                                'Use o menu lateral para navegar entre clientes, chamados e campanhas. '
+                                'A partir daqui você consegue concentrar todo o acompanhamento administrativo em um só lugar.',
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            user?.email ?? 'Administrador',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Gerencie clientes, planos, pagamentos, benefícios e chamados.',
-                            style: TextStyle(
-                              color: Colors.black54,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Atalhos',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _menuCard(
-              context: context,
-              icon: Icons.people_outline,
-              title: 'Clientes',
-              subtitle: 'Ver dados, plano, pagamentos e benefícios',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const AdminClientsPage(),
-                  ),
-                );
-              },
-            ),
-            _menuCard(
-              context: context,
-              icon: Icons.support_agent_outlined,
-              title: 'Chamados',
-              subtitle: 'Acompanhar solicitações dos clientes',
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Tela de chamados será criada no próximo passo.'),
-                  ),
-                );
-              },
-            ),
-            _menuCard(
-              context: context,
-              icon: Icons.campaign_outlined,
-              title: 'Campanhas',
-              subtitle: 'Gerenciar campanhas e promoções',
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Tela de campanhas será criada no próximo passo.'),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../widgets/admin_shell.dart';
 import 'admin_client_details_page.dart';
 
 class AdminClientsPage extends StatefulWidget {
@@ -12,8 +14,8 @@ class AdminClientsPage extends StatefulWidget {
 class _AdminClientsPageState extends State<AdminClientsPage> {
   final TextEditingController _searchController = TextEditingController();
 
-  List<dynamic> _clients = [];
-  List<dynamic> _filteredClients = [];
+  List<Map<String, dynamic>> _clients = [];
+  List<Map<String, dynamic>> _filteredClients = [];
   bool _loading = true;
   String? _error;
 
@@ -34,14 +36,18 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
     try {
       final data = await Supabase.instance.client
           .from('profiles')
-          .select()
+          .select('id, nome, cpf, telefone, created_at')
           .order('created_at', ascending: false);
+
+      final parsed = (data as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
 
       if (!mounted) return;
 
       setState(() {
-        _clients = data;
-        _filteredClients = data;
+        _clients = parsed;
+        _filteredClients = parsed;
         _loading = false;
         _error = null;
       });
@@ -68,9 +74,8 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
 
     setState(() {
       _filteredClients = _clients.where((client) {
-        final map = client as Map<String, dynamic>;
-        final nome = (map['nome'] ?? '').toString().toLowerCase();
-        final cpf = (map['cpf'] ?? '').toString().toLowerCase();
+        final nome = _safeText(client['nome']).toLowerCase();
+        final cpf = _safeText(client['cpf']).toLowerCase();
         return nome.contains(query) || cpf.contains(query);
       }).toList();
     });
@@ -82,87 +87,157 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
     return text.isEmpty ? fallback : text;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Clientes'),
-        actions: [
-          IconButton(
-            onPressed: _refresh,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
+  Widget _buildDesktopTable() {
+    return Card(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowHeight: 56,
+          columns: const [
+            DataColumn(label: Text('Nome')),
+            DataColumn(label: Text('CPF')),
+            DataColumn(label: Text('Telefone')),
+            DataColumn(label: Text('Ação')),
+          ],
+          rows: _filteredClients.map((client) {
+            final profileId = client['id']?.toString() ?? '';
+
+            return DataRow(
+              cells: [
+                DataCell(Text(_safeText(client['nome']))),
+                DataCell(Text(_safeText(client['cpf']))),
+                DataCell(Text(_safeText(client['telefone']))),
+                DataCell(
+                  TextButton(
+                    onPressed: profileId.isEmpty
+                        ? null
+                        : () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => AdminClientDetailsPage(
+                                  profileId: profileId,
+                                ),
+                              ),
+                            );
+                          },
+                    child: const Text('Abrir'),
+                  ),
+                ),
+              ],
+            );
+          }).toList(),
+        ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
+    );
+  }
+
+  Widget _buildMobileList() {
+    return Column(
+      children: _filteredClients.map((client) {
+        final profileId = client['id']?.toString() ?? '';
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 8,
+            ),
+            leading: const CircleAvatar(
+              child: Icon(Icons.person),
+            ),
+            title: Text(
+              _safeText(client['nome']),
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text(
+              'CPF: ${_safeText(client['cpf'])}\nTelefone: ${_safeText(client['telefone'])}',
+            ),
+            isThreeLine: true,
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: profileId.isEmpty
+                ? null
+                : () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AdminClientDetailsPage(
+                          profileId: profileId,
+                        ),
+                      ),
+                    );
+                  },
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            _error!,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth >= 900;
+
+        return RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Buscar por nome ou CPF',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              if (_filteredClients.isEmpty)
+                const Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(24),
+                    padding: EdgeInsets.all(24),
                     child: Text(
-                      _error!,
+                      'Nenhum cliente encontrado.',
                       textAlign: TextAlign.center,
                     ),
                   ),
                 )
-              : Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: TextField(
-                        controller: _searchController,
-                        decoration: InputDecoration(
-                          hintText: 'Buscar por nome ou CPF',
-                          prefixIcon: const Icon(Icons.search),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: RefreshIndicator(
-                        onRefresh: _refresh,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                          itemCount: _filteredClients.length,
-                          itemBuilder: (context, index) {
-                            final client =
-                                _filteredClients[index] as Map<String, dynamic>;
+              else if (isDesktop)
+                _buildDesktopTable()
+              else
+                _buildMobileList(),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              child: ListTile(
-                                leading: const CircleAvatar(
-                                  child: Icon(Icons.person),
-                                ),
-                                title: Text(_safeText(client['nome'])),
-                                subtitle: Text(
-                                  'CPF: ${_safeText(client['cpf'])}',
-                                ),
-                                trailing: const Icon(
-                                  Icons.arrow_forward_ios,
-                                  size: 16,
-                                ),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => AdminClientDetailsPage(
-                                        profileId: client['id'].toString(),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+  @override
+  Widget build(BuildContext context) {
+    return AdminShell(
+      selectedIndex: 1,
+      title: 'Clientes',
+      child: _buildBody(),
     );
   }
 }
